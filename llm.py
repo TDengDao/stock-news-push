@@ -66,6 +66,31 @@ def _extract_list(data):
     return []
 
 
+def _normalize(items):
+    """把列表里的元素规整成 dict（兼容字符串形式的 JSON 项）。"""
+    out = []
+    for it in items:
+        if isinstance(it, str):
+            try:
+                it = json.loads(it)
+            except Exception:
+                continue
+        if isinstance(it, dict) and (it.get("code") or it.get("name")):
+            it.setdefault("verdict", "观望")
+            try:
+                it["score"] = int(float(it.get("score", 50)))
+            except Exception:
+                it["score"] = 50
+            for k in ("risks", "positives"):
+                v = it.get(k)
+                if isinstance(v, str):
+                    it[k] = [v]
+                elif not isinstance(v, list):
+                    it[k] = []
+            out.append(it)
+    return out
+
+
 def analyze(candidates, buckets, timeout=90):
     """调用 DeepSeek 分析候选股。返回分析列表；不可用时返回 []。"""
     s = _client()
@@ -101,7 +126,7 @@ def analyze(candidates, buckets, timeout=90):
             import re
             m = re.search(r"\[.*\]", raw, re.S)
             data = json.loads(m.group(0)) if m else {}
-        result = _extract_list(data)
+        result = _normalize(_extract_list(data))
         if not result:
             print("      [WARN] 返回结构无法识别:", str(data)[:200])
         return result

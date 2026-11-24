@@ -35,7 +35,7 @@ def _fmt_dashboard_item(a):
 def build_markdown(d):
     lines = [f"# 财经早报 · {d['date']}", ""]
 
-    dash = d.get("dashboard") or []
+    dash = [a for a in (d.get("dashboard") or []) if isinstance(a, dict)]
     if dash:
         lines.append("## 🎯 决策仪表盘（AI 动态选股）")
         lines.append("")
@@ -120,7 +120,7 @@ def build_html(d, md_text):
     down_line = " · ".join(f"{_esc(x['name'])} {x['pct']}%" for x in d["sector_down"])
 
     dash_html = ""
-    dash = d.get("dashboard") or []
+    dash = [a for a in (d.get("dashboard") or []) if isinstance(a, dict)]
     if dash:
         cards = ""
         for a in dash:
@@ -206,7 +206,7 @@ def build_telegram_text(d):
     if stats:
         lines.append(f"📈 涨跌：{stats['up']}涨 / {stats['down']}跌 · "
                      f"涨停{stats['limit_up']} 跌停{stats['limit_down']}")
-    dash = d.get("dashboard") or []
+    dash = [a for a in (d.get("dashboard") or []) if isinstance(a, dict)]
     if dash:
         lines.append("")
         lines.append("🎯 AI决策仪表盘：")
