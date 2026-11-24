@@ -189,13 +189,33 @@ def fetch_market_stats():
             url = (f"https://push2ex.eastmoney.com/{api}?ut=7eea3edcaed734bea9cbfc24409ed989"
                    f"&dpt=wz.ztzt&Pageindex=0&pagesize=1&sort={sort}&date={today}")
             d = _get(url).json().get("data") or {}
-            if isinstance(d.get("total"), int):
-                stats[key] = d["total"]
+            cnt = d.get("tc", d.get("total"))
+            if isinstance(cnt, int):
+                stats[key] = cnt
                 stats["src"].append(api)
             else:
-                print(f"      [stat] {api} 无total:", str(d)[:100])
+                print(f"      [stat] {api} 无计数:", str(d)[:100])
         except Exception as e:
             print(f"      [stat] {api} 失败:", type(e).__name__, str(e)[:80])
+
+    # 3) 涨跌家数兜底：尝试一次拉取全市场（探测单页上限）
+    if stats["up"] is None:
+        for pz in (5000, 2000, 800):
+            try:
+                path = ("/api/qt/clist/get?pn=1&pz={}&po=1&np=1&fltt=2&fid=f3"
+                        "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
+                        "&fields=f3").format(pz)
+                j = _em_get(path).json()["data"]
+                diff = j.get("diff") or []
+                print(f"      [stat] pz={pz} 返回 {len(diff)} 条 / total={j.get('total')}")
+                if len(diff) >= 800:
+                    up = sum(1 for x in diff if isinstance(x.get("f3"), (int, float)) and x["f3"] > 0)
+                    down = sum(1 for x in diff if isinstance(x.get("f3"), (int, float)) and x["f3"] < 0)
+                    flat = len(diff) - up - down
+                    stats.update(up=up, down=down, flat=flat, src=stats["src"] + [f"clist_pz{pz}"])
+                    break
+            except Exception as e:
+                print(f"      [stat] pz={pz} 失败:", type(e).__name__, str(e)[:60])
 
     # 全部字段都拿不到才算失败
     if all(stats[k] is None for k in ("up", "down", "limit_up", "limit_down")):
