@@ -46,6 +46,26 @@ def _related_news(candidates, buckets):
     return candidates
 
 
+def _extract_list(data):
+    """从模型返回中尽力提取列表。"""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        # 常见包装键
+        for k in ("stocks", "results", "data", "analysis", "items", "list"):
+            v = data.get(k)
+            if isinstance(v, list):
+                return v
+        # 兜底：第一个 list 值
+        for v in data.values():
+            if isinstance(v, list):
+                return v
+        # 单只股票被包成 dict
+        if {"code", "score"} <= set(data):
+            return [data]
+    return []
+
+
 def analyze(candidates, buckets, timeout=90):
     """调用 DeepSeek 分析候选股。返回分析列表；不可用时返回 []。"""
     s = _client()
@@ -69,17 +89,22 @@ def analyze(candidates, buckets, timeout=90):
     try:
         r = s.post(BASE_URL + "/chat/completions", json=body, timeout=timeout)
         r.raise_for_status()
-        content = r.json()["choices"][0]["message"]["content"]
-        # 兼容模型把数组包在对象里的情况
-        data = json.loads(content)
-        if isinstance(data, dict):
-            for k in ("stocks", "results", "data", "analysis"):
-                if k in data:
-                    data = data[k]
-                    break
-            else:
-                data = list(data.values())[0]
-        return data if isinstance(data, list) else []
+        content = r.json()["choices"][0]["message"]["content"] or ""
+        raw = content.strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            raw = raw[raw.find("{"):] if "{" in raw else raw
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            print("      [WARN] JSON 解析失败, 原始返回前200字:", raw[:200])
+            import re
+            m = re.search(r"\[.*\]", raw, re.S)
+            data = json.loads(m.group(0)) if m else {}
+        result = _extract_list(data)
+        if not result:
+            print("      [WARN] 返回结构无法识别:", str(data)[:200])
+        return result
     except Exception as e:
-        print("      [WARN] DeepSeek 分析失败:", type(e).__name__, str(e)[:100])
+        print("      [WARN] DeepSeek 分析失败:", type(e).__name__, str(e)[:120])
         return []
