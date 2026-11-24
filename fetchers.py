@@ -88,15 +88,14 @@ def fetch_index_snapshot():
 
 
 def fetch_sector_rank(top=10):
-    """东财行业/概念板块涨幅榜与跌幅榜。"""
-    path = ("/api/qt/clist/get?pn=1&pz=500&po=1"
-            "&np=1&fltt=2&fid=f3&fs=m:90+t:2&fields=f3,f14")
-    diff = _em_get(path).json()["data"]["diff"]
-    diff.sort(key=lambda x: x["f3"], reverse=True)
-    up = [{"name": x["f14"], "pct": x["f3"]} for x in diff[:top]]
-    neg = [x for x in diff if isinstance(x.get("f3"), (int, float)) and x["f3"] < 0]
-    down = [{"name": x["f14"], "pct": x["f3"]} for x in neg[-5:]] or \
-           [{"name": x["f14"], "pct": x["f3"]} for x in reversed(diff[-5:])]
+    """东财行业/概念板块涨幅榜与跌幅榜。
+    注意 clist 单页上限 100 条，涨/跌分别用不同排序请求。"""
+    base = ("/api/qt/clist/get?pn=1&pz=100&np=1&fltt=2&fid=f3"
+            "&fs=m:90+t:2&fields=f3,f14&po=")
+    up_diff = _em_get(base + "1").json()["data"]["diff"]
+    down_diff = _em_get(base + "0").json()["data"]["diff"]
+    up = [{"name": x["f14"], "pct": x["f3"]} for x in up_diff[:top]]
+    down = [{"name": x["f14"], "pct": x["f3"]} for x in down_diff[:5]]
     return up, down
 
 
