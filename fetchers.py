@@ -157,6 +157,79 @@ def dedup(news_list, limit=60):
     return out[:limit]
 
 
+_BREADTH_CACHE = {}
+
+
+def _page_f3(pn, pz=100):
+    """取按涨跌幅降序排列的第 pn 页（1-based），返回 f3 列表。"""
+    if pn in _BREADTH_CACHE:
+        return _BREADTH_CACHE[pn]
+    path = ("/api/qt/clist/get?pn={}&pz={}&po=1&np=1&fltt=2&fid=f3"
+            "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f3").format(pn, pz)
+    diff = _em_get(path).json()["data"]["diff"]
+    vals = [x.get("f3") for x in diff]
+    _BREADTH_CACHE[pn] = vals
+    return vals
+
+
+def _count_breadth(pz=100):
+    """二分定位「上涨/平盘/下跌」的分界页，返回 (上涨家数, 上涨+平盘家数)。"""
+    _BREADTH_CACHE.clear()
+    first = _page_f3(1, pz)
+    total = len(first)
+    # 估算总页数
+    path0 = ("/api/qt/clist/get?pn=1&pz=1&po=1&np=1&fltt=2&fid=f3"
+             "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f3")
+    total_all = _em_get(path0).json()["data"].get("total") or total
+    pages = (total_all + pz - 1) // pz
+
+    def first_val(pn):
+        v = _page_f3(pn, pz)
+        return v[0] if v else None
+
+    def boundary(cond):
+        """找第一个满足 cond(页首值) 的页号。"""
+        lo, hi = 1, pages
+        while lo < hi:
+            mid = (lo + hi) // 2
+            v = first_val(mid)
+            if v is None:
+                return lo
+            if cond(v):
+                hi = mid
+            else:
+                lo = mid + 1
+        return lo
+
+    def count_until(pn_end, pred):
+        """统计前 pn_end-1 页中满足 pred 的数量 + 第 pn_end 页内的数量。"""
+        n = (pn_end - 1) * pz
+        for v in _page_f3(pn_end, pz):
+            if v is None:
+                break
+            if pred(v):
+                n += 1
+        return n
+
+    # 第一个「页首 <= 0」的页 → 上涨数量
+    pn_up = boundary(lambda v: v <= 0)
+    up = 0
+    if pn_up > 1:
+        prev = _page_f3(pn_up - 1, pz)
+        up = (pn_up - 2) * pz + sum(1 for v in prev if isinstance(v, (int, float)) and v > 0)
+    up += sum(1 for v in _page_f3(pn_up, pz) if isinstance(v, (int, float)) and v > 0)
+
+    # 第一个「页首 < 0」的页 → 上涨+平盘数量
+    pn_flat = boundary(lambda v: v < 0)
+    upflat = 0
+    if pn_flat > 1:
+        prev = _page_f3(pn_flat - 1, pz)
+        upflat = (pn_flat - 2) * pz + sum(
+            1 for v in prev if isinstance(v, (int, float)) and v >= 0)
+    upflat += sum(1 for v in _page_f3(pn_flat, pz) if isinstance(v, (int, float)) and v >= 0)
+    return up, upflat
+
+
 def fetch_market_stats():
     """全市场统计：涨跌家数 + 涨停/跌停数。
     东财 clist 单页上限 100 条，因此涨跌家数改用指数行情接口的 f104/f105/f106，
@@ -198,24 +271,15 @@ def fetch_market_stats():
         except Exception as e:
             print(f"      [stat] {api} 失败:", type(e).__name__, str(e)[:80])
 
-    # 3) 涨跌家数兜底：尝试一次拉取全市场（探测单页上限）
+    # 3) 涨跌家数：利用 f3 降序 + 二分查找页边界，精确统计（约12次请求）
     if stats["up"] is None:
-        for pz in (5000, 2000, 800):
-            try:
-                path = ("/api/qt/clist/get?pn=1&pz={}&po=1&np=1&fltt=2&fid=f3"
-                        "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
-                        "&fields=f3").format(pz)
-                j = _em_get(path).json()["data"]
-                diff = j.get("diff") or []
-                print(f"      [stat] pz={pz} 返回 {len(diff)} 条 / total={j.get('total')}")
-                if len(diff) >= 800:
-                    up = sum(1 for x in diff if isinstance(x.get("f3"), (int, float)) and x["f3"] > 0)
-                    down = sum(1 for x in diff if isinstance(x.get("f3"), (int, float)) and x["f3"] < 0)
-                    flat = len(diff) - up - down
-                    stats.update(up=up, down=down, flat=flat, src=stats["src"] + [f"clist_pz{pz}"])
-                    break
-            except Exception as e:
-                print(f"      [stat] pz={pz} 失败:", type(e).__name__, str(e)[:60])
+        try:
+            up, flat_total = _count_breadth()
+            stats["up"] = up
+            stats["flat"] = flat_total - up
+            stats["src"].append("bisect")
+        except Exception as e:
+            print("      [stat] 二分统计失败:", type(e).__name__, str(e)[:60])
 
     # 全部字段都拿不到才算失败
     if all(stats[k] is None for k in ("up", "down", "limit_up", "limit_down")):
