@@ -141,31 +141,60 @@ def dedup(news_list, limit=60):
 
 
 def fetch_market_stats():
-    """全市场统计：上涨/下跌家数、涨停/跌停数。（数据源：东财，单次全量请求）"""
-    url = ("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=6000&po=1"
-           "&np=1&fltt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f3")
-    diff = _get(url).json()["data"]["diff"]
-    up = down = flat = limit_up = limit_down = 0
-    for x in diff:
-        p = x["f3"]
-        if p > 0:
-            up += 1
-        elif p < 0:
-            down += 1
-        else:
-            flat += 1
-        if p >= 9.9:
-            limit_up += 1
-        if p <= -9.9:
-            limit_down += 1
-    return {"up": up, "down": down, "flat": flat,
-            "limit_up": limit_up, "limit_down": limit_down,
-            "total": len(diff)}
+    """全市场统计：涨跌家数 + 涨停/跌停数。
+    东财 clist 单页上限 100 条，因此涨跌家数改用指数行情接口的 f104/f105/f106，
+    涨跌停数用涨停池/跌停池接口（准确值）。"""
+    stats = {"up": None, "down": None, "flat": None,
+             "limit_up": None, "limit_down": None, "src": []}
+
+    # 1) 涨跌家数：上证指数行情附带的全市场统计字段
+    try:
+        url = ("https://push2.eastmoney.com/api/qt/stock/get?"
+               "ut=fa5fd1943c7b386f172d6893dbfba10b&invt=2&fltt=2"
+               "&fields=f104,f105,f106&secid=1.000001")
+        d = _get(url).json().get("data") or {}
+        if isinstance(d.get("f104"), (int, float)) and \
+                isinstance(d.get("f105"), (int, float)):
+            stats["up"], stats["down"] = int(d["f104"]), int(d["f105"])
+            stats["flat"] = int(d.get("f106") or 0)
+            stats["src"].append("index_breadth")
+    except Exception:
+        pass
+
+    # 2) 涨停 / 跌停家数：涨停池、跌停池接口
+    today = datetime.date.today().strftime("%Y%m%d")
+    pools = [("limit_up", "getTopicZTPool", "fbt:asc"),
+             ("limit_down", "getTopicDTPool", "fund:asc")]
+    for key, api, sort in pools:
+        try:
+            url = (f"https://push2ex.eastmoney.com/{api}?ut=7eea3edcaed734bea9cbfc24409ed989"
+                   f"&dpt=wz.ztzt&Pageindex=0&pagesize=1&sort={sort}&date={today}")
+            d = _get(url).json().get("data") or {}
+            if isinstance(d.get("total"), int):
+                stats[key] = d["total"]
+                stats["src"].append(api)
+        except Exception:
+            pass
+
+    # 全部字段都拿不到才算失败
+    if all(stats[k] is None for k in ("up", "down", "limit_up", "limit_down")):
+        raise RuntimeError("市场统计接口均不可用")
+    return stats
+
+
+def _is_tradable_stock(code, name):
+    """过滤 ETF/基金/转债/北交所等，只保留沪深主板、创业板、科创板个股。"""
+    if not code or len(code) != 6:
+        return False
+    if code[0] not in ("0", "3", "6"):
+        return False
+    bad = ("ETF", "LOF", "基金", "转债", "债", "ST", "退")
+    return not any(b in name for b in bad)
 
 
 def fetch_top_gainers(n=8):
-    """当日涨幅榜（排除ST、退市、低价股），作为动态选股池。"""
-    url = ("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=60&po=1"
+    """当日涨幅榜（排除ST、退市、ETF、低价股），作为动态选股池。"""
+    url = ("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=100&po=1"
            "&np=1&fltt=2&fid=f3"
            "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
            "&fields=f2,f3,f12,f14")
@@ -174,9 +203,9 @@ def fetch_top_gainers(n=8):
     for x in diff:
         name = x.get("f14") or ""
         price = x.get("f2")
-        if "ST" in name or "退" in name or not isinstance(price, (int, float)):
+        if not isinstance(price, (int, float)) or price < 2:
             continue
-        if price < 2:
+        if not _is_tradable_stock(x.get("f12", ""), name):
             continue
         out.append({"code": x["f12"], "name": name,
                     "price": price, "pct": x["f3"]})
@@ -191,6 +220,8 @@ def fetch_candidates(news_list, max_n=6):
 
     def add(code, name, price, pct):
         if code in seen or len(picked) >= max_n:
+            return
+        if not _is_tradable_stock(code, name):
             return
         seen.add(code)
         picked.append({"code": code, "name": name,

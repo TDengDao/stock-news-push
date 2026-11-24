@@ -64,14 +64,23 @@ def build_markdown(d):
         f"{x['name']}({x['pct']}%)" for x in d["sector_down"]))
     lines.append("")
 
-    stats = d.get("market_stats")
+    stats = d.get("market_stats") or {}
     if stats:
-        lines.append("## 市场概览")
-        lines.append(f"- 上涨 **{stats['up']}** 家 | 下跌 **{stats['down']}** 家 | "
-                     f"平盘 {stats['flat']} 家")
-        lines.append(f"- 涨停 **{stats['limit_up']}** 只 | "
-                     f"跌停 **{stats['limit_down']}** 只")
-        lines.append("")
+        rows = []
+        if stats.get("up") is not None and stats.get("down") is not None:
+            t = f"- 上涨 **{stats['up']}** 家 | 下跌 **{stats['down']}** 家"
+            if stats.get("flat") is not None:
+                t += f" | 平盘 {stats['flat']} 家"
+            rows.append(t)
+        if stats.get("limit_up") is not None:
+            t = f"- 涨停 **{stats['limit_up']}** 只"
+            if stats.get("limit_down") is not None:
+                t += f" | 跌停 **{stats['limit_down']}** 只"
+            rows.append(t)
+        if rows:
+            lines.append("## 市场概览")
+            lines.extend(rows)
+            lines.append("")
 
     if d["crypto"]:
         lines.append("## 币圈行情")
@@ -140,12 +149,19 @@ def build_html(d, md_text):
         dash_html = f"<h2>🎯 决策仪表盘（AI 动态选股，共{len(dash)}只）</h2>{cards}"
 
     stats_html = ""
-    stats = d.get("market_stats")
+    stats = d.get("market_stats") or {}
     if stats:
-        stats_html = (f"<h2>市场概览</h2><p>上涨 <b class=\"up\">{stats['up']}</b> 家 · "
-                      f"下跌 <b class=\"down\">{stats['down']}</b> 家 · 平盘 {stats['flat']} 家 · "
-                      f"涨停 <b class=\"up\">{stats['limit_up']}</b> 只 · "
-                      f"跌停 <b class=\"down\">{stats['limit_down']}</b> 只</p>")
+        bits = []
+        if stats.get("up") is not None and stats.get("down") is not None:
+            bits.append(f"上涨 <b class=\"up\">{stats['up']}</b> 家 · "
+                        f"下跌 <b class=\"down\">{stats['down']}</b> 家"
+                        + (f" · 平盘 {stats['flat']} 家" if stats.get("flat") is not None else ""))
+        if stats.get("limit_up") is not None:
+            bits.append(f"涨停 <b class=\"up\">{stats['limit_up']}</b> 只"
+                        + (f" · 跌停 <b class=\"down\">{stats['limit_down']}</b> 只"
+                           if stats.get("limit_down") is not None else ""))
+        if bits:
+            stats_html = "<h2>市场概览</h2><p>" + "<br>".join(bits) + "</p>"
 
     sections = ""
     for cat in ["宏观", "大宗商品", "币圈", "综合"]:
@@ -202,10 +218,15 @@ def build_telegram_text(d):
     up = "、".join(f"{x['name']}+{x['pct']}%" for x in d["sector_up"][:6])
     lines = [f"📰 财经早报 {d['date']}", "", f"📊 大盘：{idx}",
              f"🔥 领涨：{up}"]
-    stats = d.get("market_stats")
+    stats = d.get("market_stats") or {}
     if stats:
-        lines.append(f"📈 涨跌：{stats['up']}涨 / {stats['down']}跌 · "
-                     f"涨停{stats['limit_up']} 跌停{stats['limit_down']}")
+        t = []
+        if stats.get("up") is not None:
+            t.append(f"{stats['up']}涨/{stats['down']}跌")
+        if stats.get("limit_up") is not None:
+            t.append(f"涨停{stats['limit_up']}")
+        if t:
+            lines.append("📈 " + " · ".join(t))
     dash = [a for a in (d.get("dashboard") or []) if isinstance(a, dict)]
     if dash:
         lines.append("")
