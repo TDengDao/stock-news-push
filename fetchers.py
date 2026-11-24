@@ -258,14 +258,19 @@ def fetch_market_stats():
 
     # 1) 涨跌家数：利用 f3 降序 + 二分查找页边界，精确统计（约12次请求）
     if stats["up"] is None:
-        try:
-            up, upflat, total_all = _count_breadth()
-            stats["up"] = up
-            stats["flat"] = max(upflat - up, 0)
-            stats["down"] = max(total_all - upflat, 0)
-            stats["src"].append("bisect")
-        except Exception as e:
-            print("      [stat] 二分统计失败:", type(e).__name__, str(e)[:60])
+        for attempt in range(3):
+            try:
+                up, upflat, total_all = _count_breadth()
+                stats["up"] = up
+                stats["flat"] = max(upflat - up, 0)
+                stats["down"] = max(total_all - upflat, 0)
+                stats["src"].append("bisect")
+                break
+            except Exception as e:
+                print(f"      [stat] 二分统计失败(第{attempt+1}次):",
+                      type(e).__name__, str(e)[:50])
+                if attempt < 2:
+                    time.sleep(5)
 
     # 全部字段都拿不到才算失败
     if all(stats[k] is None for k in ("up", "down", "limit_up", "limit_down")):
