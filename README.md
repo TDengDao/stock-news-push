@@ -1,10 +1,24 @@
-# 财经新闻日报推送（VPS / GitHub Actions 双方案）
+# 财经新闻日报推送（GitHub Actions / VPS 双方案）
 
-每天早上自动抓取 A股行情、板块热点、宏观/大宗/币圈要闻，生成日报并推送到你的微信/邮箱/Telegram/企业微信/钉钉。全部数据源免费、无需 API Key。
+每天早上自动抓取 A股行情、板块热点、宏观/大宗/币圈要闻，用 DeepSeek 对当日热点股做 AI 分析，生成日报推送到微信，并自动发布成网页归档。
 
-**两种部署方式，任选其一：**
-- 🅰 **GitHub Actions**（推荐，零成本、免服务器）：仓库定时任务，每天 8:00 自动跑，日报存为 Artifact 可回溯
+## 功能
+
+- **🎯 AI 决策仪表盘**：每天自动从「新闻提及个股 + 涨幅榜龙头」中挑选 6 只热点股，由 DeepSeek 输出评分（0-100）、买入/观望/卖出建议、风险警报、利好催化
+- **📊 大盘复盘**：四大指数、涨跌家数（二分法精确统计全市场 5500+ 只）、涨停/跌停家数、板块涨跌榜
+- **📰 要闻分类**：宏观 / 大宗商品 / 币圈 / 综合，自动去重归类
+- **🪙 币圈行情**：BTC/ETH 实时价格与 24h 涨跌
+- **📱 微信推送**：Server酱（可扩展邮件/TG/企业微信/钉钉）
+- **🌐 网页版**：GitHub Pages 自动归档，历史日报随时翻
+
+**两种部署方式：**
+- 🅰 **GitHub Actions**（推荐，零成本、免服务器）：每天 8:00 自动跑 + 自动发布网页
 - 🅱 **自己的 VPS**：cron 定时，数据全部本地留存
+
+## 网页效果
+
+- 首页（历史归档）：`https://<用户名>.github.io/stock-news-push/`
+- 今日最新：`https://<用户名>.github.io/stock-news-push/latest.html`
 
 ---
 
@@ -16,18 +30,27 @@
 cd stock-news-push
 git init && git add -A
 git commit -m "init: 财经早报 daily report bot"
-# 先在 GitHub 网页建一个空仓库（建议 Private），然后：
+# 先在 GitHub 网页建一个空仓库（网页版需要 Public），然后：
 git remote add origin https://github.com/你的用户名/stock-news-push.git
 git push -u origin main
 ```
 
-> `config.yaml`（含 SendKey）已被 `.gitignore` 排除，不会被提交。
+> `config.yaml`（含密钥）已被 `.gitignore` 排除，不会被提交。
 
-### 2. 配置 Secret
+### 2. 配置 Secrets
 
 仓库页面 → **Settings → Secrets and variables → Actions → New repository secret**
 
-- Name: `SERVERCHAN_SENDKEY`
+- `SERVERCHAN_SENDKEY`：Server酱 SendKey（`SCT` 开头）
+- `DEEPSEEK_API_KEY`：DeepSeek API Key（`sk-` 开头，用于 AI 决策仪表盘）
+
+### 3. 开启 GitHub Pages
+
+仓库 **Settings → Pages → Build and deployment → Source 选 Deploy from a branch → Branch 选 `gh-pages` / root → Save**。（首次运行会自动创建 gh-pages 分支）
+
+### 4. 测试
+
+**Actions** 标签页 → 左侧「财经早报」→ **Run workflow** → 选中 main 分支运行。
 - Secret: 你的 Server酱 SendKey（`SCT` 开头）
 
 ### 3. 测试
@@ -48,10 +71,22 @@ GitHub 免费版定时任务可能延迟几分钟到半小时（高峰期），�
 
 | 内容 | 来源 |
 |---|---|
-| A股指数（上证/深成/创业板/科创50） | 东方财富行情接口 |
-| 板块涨跌榜 | 东方财富板块接口 |
-| 财经快讯 | 东方财富 7x24 + 新浪 7x24（自动去重、按关键词分类） |
+| A股指数（上证/深成/创业板/科创50） | 腾讯行情（主）/ 东方财富（备） |
+| 板块涨跌榜 | 东方财富（涨跌分开请求，绕开单页 100 条限制） |
+| 涨跌家数 / 涨跌停 | 东方财富 clist 二分页边界统计 + 涨跌停池 |
+| 财经快讯 | 东方财富 7x24 + 新浪 7x24（去重 + 关键词分类） |
+| 选股候选 | 快讯个股提及 + 当日涨幅榜（过滤 ETF/ST） |
 | BTC/ETH 价格 | CoinGecko 免费接口 |
+| 个股分析 | DeepSeek（deepseek-chat），需 DEEPSEEK_API_KEY |
+
+### 文件说明（新增）
+
+| 文件 | 作用 |
+|---|---|
+| `llm.py` | DeepSeek 决策仪表盘分析 |
+| `gen_site_index.py` | 生成 GitHub Pages 历史归档索引 |
+
+> ⚠️ AI 分析仅为公开信息的自动化解读，不构成投资建议。
 
 ## 快速部署（VPS）
 

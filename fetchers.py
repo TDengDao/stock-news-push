@@ -233,28 +233,12 @@ def _count_breadth(pz=100):
 
 def fetch_market_stats():
     """全市场统计：涨跌家数 + 涨停/跌停数。
-    东财 clist 单页上限 100 条，因此涨跌家数改用指数行情接口的 f104/f105/f106，
-    涨跌停数用涨停池/跌停池接口（准确值）。"""
+    东财 clist 单页上限 100 条：涨跌家数用 f3 降序 + 二分页边界精确统计；
+    涨跌停数用涨停池/跌停池接口（字段 tc）。"""
     stats = {"up": None, "down": None, "flat": None,
              "limit_up": None, "limit_down": None, "src": []}
 
-    # 1) 涨跌家数：上证指数行情附带的全市场统计字段
-    try:
-        path = ("/api/qt/stock/get?"
-                "ut=fa5fd1943c7b386f172d6893dbfba10b&invt=2&fltt=2"
-                "&fields=f104,f105,f106&secid=1.000001")
-        d = _em_get(path).json().get("data") or {}
-        if isinstance(d.get("f104"), (int, float)) and \
-                isinstance(d.get("f105"), (int, float)):
-            stats["up"], stats["down"] = int(d["f104"]), int(d["f105"])
-            stats["flat"] = int(d.get("f106") or 0)
-            stats["src"].append("index_breadth")
-        else:
-            print("      [stat] breadth字段缺失:", str(d)[:100])
-    except Exception as e:
-        print("      [stat] breadth失败:", type(e).__name__, str(e)[:80])
-
-    # 2) 涨停 / 跌停家数：涨停池、跌停池接口
+    # 2) 涨停 / 跌停家数：涨停池、跌停池接口（字段 tc）
     today = datetime.date.today().strftime("%Y%m%d")
     pools = [("limit_up", "getTopicZTPool", "fbt:asc"),
              ("limit_down", "getTopicDTPool", "fund:asc")]
@@ -272,7 +256,7 @@ def fetch_market_stats():
         except Exception as e:
             print(f"      [stat] {api} 失败:", type(e).__name__, str(e)[:80])
 
-    # 3) 涨跌家数：利用 f3 降序 + 二分查找页边界，精确统计（约12次请求）
+    # 1) 涨跌家数：利用 f3 降序 + 二分查找页边界，精确统计（约12次请求）
     if stats["up"] is None:
         try:
             up, upflat, total_all = _count_breadth()
