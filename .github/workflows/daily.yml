@@ -1,0 +1,48 @@
+name: 财经早报
+
+on:
+  schedule:
+    # GitHub Actions 用 UTC 时间：0:00 UTC = 北京时间 8:00
+    # 注意：GitHub 免费定时任务可能延迟几分钟到半小时，属正常现象
+    - cron: "0 0 * * *"
+  workflow_dispatch:        # 支持手动触发测试
+
+permissions:
+  contents: read
+
+jobs:
+  daily-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 生成推送配置（从 Secrets 读取 SendKey）
+        run: |
+          cat > config.yaml <<EOF
+          push:
+            channels:
+              - type: serverchan
+                sendkey: "${{ secrets.SERVERCHAN_SENDKEY }}"
+          EOF
+
+      - name: 抓取数据并推送日报
+        run: python main.py
+
+      - name: 上传日报存档
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ github.run_number }}
+          path: output/
+          retention-days: 90

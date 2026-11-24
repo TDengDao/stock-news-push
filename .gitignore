@@ -1,0 +1,9 @@
+# 本地配置含密钥，绝不提交
+config.yaml
+run.log
+
+# 运行产物
+output/
+__pycache__/
+*.pyc
+.DS_Store

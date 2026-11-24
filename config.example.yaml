@@ -1,0 +1,36 @@
+# 复制本文件为 config.yaml，然后填入你的推送配置
+# push.channels 里想用哪个渠道就留哪个，其他删掉即可，可多选
+
+push:
+  channels:
+    # ---- 方式1: Server酱，推送到微信（最简单，推荐）----
+    # 到 https://sct.ftqq.com 免费申请 SendKey，微信关注"方糖"服务号即可收
+    - type: serverchan
+      sendkey: "SCTxxxxxxxxxxxxxxx"
+
+    # ---- 方式2: 邮件推送 ----
+    # password 填邮箱的授权码（不是登录密码），QQ邮箱在设置-账户里开启SMTP获取
+    - type: email
+      host: "smtp.qq.com"
+      port: 465
+      ssl: true
+      user: "your@qq.com"
+      password: "你的SMTP授权码"
+      from: "your@qq.com"
+      to: "接收人@example.com"
+
+    # ---- 方式3: Telegram Bot ----
+    # @BotFather 建 bot 拿 token，把 bot 拉进群或私聊后 @userinfobot 查 chat_id
+    # 注意：VPS 在国内的话 Telegram 需要能出网
+    # - type: telegram
+    #   bot_token: "123456:ABC-xxx"
+    #   chat_id: "123456789"
+
+    # ---- 方式4: 企业微信群机器人 ----
+    # 群设置里添加机器人，复制 webhook 地址
+    # - type: wecom_webhook
+    #   webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx"
+
+    # ---- 方式5: 钉钉群机器人（安全设置选"自定义关键词"，加"财经"）----
+    # - type: dingtalk_webhook
+    #   webhook: "https://oapi.dingtalk.com/robot/send?access_token=xxx"
