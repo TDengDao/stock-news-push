@@ -175,8 +175,10 @@ def fetch_market_stats():
             stats["up"], stats["down"] = int(d["f104"]), int(d["f105"])
             stats["flat"] = int(d.get("f106") or 0)
             stats["src"].append("index_breadth")
-    except Exception:
-        pass
+        else:
+            print("      [stat] breadth字段缺失:", str(d)[:100])
+    except Exception as e:
+        print("      [stat] breadth失败:", type(e).__name__, str(e)[:80])
 
     # 2) 涨停 / 跌停家数：涨停池、跌停池接口
     today = datetime.date.today().strftime("%Y%m%d")
@@ -190,8 +192,10 @@ def fetch_market_stats():
             if isinstance(d.get("total"), int):
                 stats[key] = d["total"]
                 stats["src"].append(api)
-        except Exception:
-            pass
+            else:
+                print(f"      [stat] {api} 无total:", str(d)[:100])
+        except Exception as e:
+            print(f"      [stat] {api} 失败:", type(e).__name__, str(e)[:80])
 
     # 全部字段都拿不到才算失败
     if all(stats[k] is None for k in ("up", "down", "limit_up", "limit_down")):
