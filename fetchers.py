@@ -140,6 +140,57 @@ def dedup(news_list, limit=60):
     return out[:limit]
 
 
+def fetch_market_stats():
+    """全市场统计：上涨/下跌家数、涨停/跌停数。（数据源：东财，单次全量请求）"""
+    url = ("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=6000&po=1"
+           "&np=1&fltt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f3")
+    diff = _get(url).json()["data"]["diff"]
+    up = down = flat = limit_up = limit_down = 0
+    for x in diff:
+        p = x["f3"]
+        if p > 0:
+            up += 1
+        elif p < 0:
+            down += 1
+        else:
+            flat += 1
+        if p >= 9.9:
+            limit_up += 1
+        if p <= -9.9:
+            limit_down += 1
+    return {"up": up, "down": down, "flat": flat,
+            "limit_up": limit_up, "limit_down": limit_down,
+            "total": len(diff)}
+
+
+def fetch_candidates(news_list, max_n=6):
+    """动态选股候选：从今日快讯中提取被提及的个股代码，取前 N 只。
+    东财快讯 stockList 格式如 "1.600941"(沪) / "0.002124"(深)。"""
+    codes, seen = [], set()
+    for n in news_list:
+        for c in n.get("stocks") or []:
+            code = c.split(".")[-1]
+            market = c.split(".")[0] if "." in c else ""
+            if market in ("0", "1") and len(code) == 6 and code not in seen:
+                seen.add(code)
+                codes.append(code)
+    codes = codes[:max_n]
+    if not codes:
+        return []
+    # 腾讯行情批量取名称/价格/涨跌幅
+    q = ",".join(("s_sh" if c.startswith(("6", "9")) else "s_sz") + c
+                 for c in codes)
+    text = _get("https://qt.gtimg.cn/q=" + q,
+                headers={**HEADERS, "Referer": "https://gu.qq.com/"}).text
+    out = []
+    for m in re.finditer(r'v_s_(\w+)="([^"]+)"', text):
+        f = m.group(2).split("~")
+        if len(f) > 6:
+            out.append({"code": f[2], "name": f[1], "price": float(f[3]),
+                        "pct": float(f[5])})
+    return out
+
+
 def fetch_crypto(ids="bitcoin,ethereum"):
     """CoinGecko 币价（免 Key，频率限制内可用）。"""
     try:
@@ -162,7 +213,8 @@ def gather():
     单个数据源失败不影响整体，失败信息记录在 sources 字段。"""
     today = datetime.date.today().strftime("%Y-%m-%d")
     d = {"date": today, "index": [], "sector_up": [], "sector_down": [],
-         "news": {}, "crypto": [], "sources": {}}
+         "news": {}, "crypto": [], "sources": {},
+         "market_stats": None, "candidates": []}
 
     def step(name, fn, *a, **kw):
         try:
@@ -184,9 +236,17 @@ def gather():
     crypto = step("币价", fetch_crypto)
     if crypto:
         d["crypto"] = crypto
+    stats = step("市场统计", fetch_market_stats)
+    if stats:
+        d["market_stats"] = stats
+    # 动态选股候选：依赖快讯里的个股提及
+    all_news = [n for items in d["news"].values() for n in items]
+    cands = step("选股候选", fetch_candidates, all_news)
+    if cands:
+        d["candidates"] = cands
 
     # 全部成功则标记 sources 为 ok
-    for k in ["行情指数", "板块榜单", "财经快讯", "币价"]:
+    for k in ["行情指数", "板块榜单", "财经快讯", "币价", "市场统计", "选股候选"]:
         d["sources"].setdefault(k, "ok")
     return d
 

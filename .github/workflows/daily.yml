@@ -8,12 +8,18 @@ on:
   workflow_dispatch:        # 支持手动触发测试
 
 permissions:
-  contents: read
+  contents: write           # 需要写 gh-pages 分支
+  pages: write
+  id-token: write
+
+concurrency:
+  group: daily-report
+  cancel-in-progress: false
 
 jobs:
   daily-report:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -27,7 +33,7 @@ jobs:
       - name: 安装依赖
         run: pip install -r requirements.txt
 
-      - name: 生成推送配置（从 Secrets 读取 SendKey）
+      - name: 生成推送配置（从 Secrets 读取）
         run: |
           cat > config.yaml <<EOF
           push:
@@ -36,7 +42,9 @@ jobs:
                 sendkey: "${{ secrets.SERVERCHAN_SENDKEY }}"
           EOF
 
-      - name: 抓取数据并推送日报
+      - name: 抓取数据 · AI 分析 · 推送日报
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: python main.py
 
       - name: 上传日报存档
@@ -46,3 +54,43 @@ jobs:
           name: report-${{ github.run_number }}
           path: output/
           retention-days: 90
+
+  publish-site:
+    needs: daily-report
+    if: always() && needs.daily-report.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 下载本次日报
+        uses: actions/download-artifact@v4
+        with:
+          name: report-${{ github.run_number }}
+          path: site
+
+      - name: 合并历史归档并生成索引
+        run: |
+          git fetch origin gh-pages --depth=1 2>/dev/null || true
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            mkdir -p old
+            git archive origin/gh-pages | tar -x -C old 2>/dev/null || true
+            if [ -d old ]; then
+              for f in old/*.html; do
+                [ -e "$f" ] || continue
+                base=$(basename "$f")
+                [ -e "site/$base" ] || cp "$f" "site/$base"
+              done
+            fi
+          fi
+          python gen_site_index.py site
+
+      - name: 发布到 gh-pages（GitHub Pages）
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
+          keep_files: true
+          commit_message: "report: ${{ github.run_number }}"
