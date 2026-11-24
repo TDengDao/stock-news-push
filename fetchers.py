@@ -43,6 +43,23 @@ def _get(url, tries=3, **kw):
     raise last_err
 
 
+# 东财有多个可轮换的行情域名，避免单域名限流
+EM_HOSTS = ["push2.eastmoney.com", "push2delay.eastmoney.com",
+            "82.push2.eastmoney.com", "91.push2.eastmoney.com"]
+
+
+def _em_get(path_with_query, tries=2):
+    """依次尝试东财各域名，任一成功即返回。path 需以 / 开头。"""
+    last = None
+    for host in EM_HOSTS:
+        try:
+            return _get("https://" + host + path_with_query, tries=tries)
+        except Exception as e:
+            last = e
+            time.sleep(1)
+    raise last
+
+
 def fetch_index_snapshot():
     """A股核心指数快照：上证、深成、创业板、科创50。
     优先腾讯行情（稳定），失败则回退东财。"""
@@ -72,9 +89,9 @@ def fetch_index_snapshot():
 
 def fetch_sector_rank(top=10):
     """东财行业/概念板块涨幅榜与跌幅榜。"""
-    url = ("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=500&po=1"
-           "&np=1&fltt=2&fid=f3&fs=m:90+t:2&fields=f3,f14")
-    diff = _get(url).json()["data"]["diff"]
+    path = ("/api/qt/clist/get?pn=1&pz=500&po=1"
+            "&np=1&fltt=2&fid=f3&fs=m:90+t:2&fields=f3,f14")
+    diff = _em_get(path).json()["data"]["diff"]
     diff.sort(key=lambda x: x["f3"], reverse=True)
     up = [{"name": x["f14"], "pct": x["f3"]} for x in diff[:top]]
     down = [{"name": x["f14"], "pct": x["f3"]} for x in reversed(diff[-5:])]
@@ -149,10 +166,10 @@ def fetch_market_stats():
 
     # 1) 涨跌家数：上证指数行情附带的全市场统计字段
     try:
-        url = ("https://push2.eastmoney.com/api/qt/stock/get?"
-               "ut=fa5fd1943c7b386f172d6893dbfba10b&invt=2&fltt=2"
-               "&fields=f104,f105,f106&secid=1.000001")
-        d = _get(url).json().get("data") or {}
+        path = ("/api/qt/stock/get?"
+                "ut=fa5fd1943c7b386f172d6893dbfba10b&invt=2&fltt=2"
+                "&fields=f104,f105,f106&secid=1.000001")
+        d = _em_get(path).json().get("data") or {}
         if isinstance(d.get("f104"), (int, float)) and \
                 isinstance(d.get("f105"), (int, float)):
             stats["up"], stats["down"] = int(d["f104"]), int(d["f105"])
@@ -194,11 +211,11 @@ def _is_tradable_stock(code, name):
 
 def fetch_top_gainers(n=8):
     """当日涨幅榜（排除ST、退市、ETF、低价股），作为动态选股池。"""
-    url = ("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=100&po=1"
-           "&np=1&fltt=2&fid=f3"
-           "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
-           "&fields=f2,f3,f12,f14")
-    diff = _get(url).json()["data"]["diff"]
+    path = ("/api/qt/clist/get?pn=1&pz=100&po=1"
+            "&np=1&fltt=2&fid=f3"
+            "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
+            "&fields=f2,f3,f12,f14")
+    diff = _em_get(path).json()["data"]["diff"]
     out = []
     for x in diff:
         name = x.get("f14") or ""
