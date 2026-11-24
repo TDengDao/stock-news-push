@@ -170,6 +170,7 @@ def _page_f3(pn, pz=100):
     diff = _em_get(path).json()["data"]["diff"]
     vals = [x.get("f3") for x in diff]
     _BREADTH_CACHE[pn] = vals
+    time.sleep(0.8)   # 节流：避免东财对突发请求直接断连
     return vals
 
 
