@@ -94,7 +94,9 @@ def fetch_sector_rank(top=10):
     diff = _em_get(path).json()["data"]["diff"]
     diff.sort(key=lambda x: x["f3"], reverse=True)
     up = [{"name": x["f14"], "pct": x["f3"]} for x in diff[:top]]
-    down = [{"name": x["f14"], "pct": x["f3"]} for x in reversed(diff[-5:])]
+    neg = [x for x in diff if isinstance(x.get("f3"), (int, float)) and x["f3"] < 0]
+    down = [{"name": x["f14"], "pct": x["f3"]} for x in neg[-5:]] or \
+           [{"name": x["f14"], "pct": x["f3"]} for x in reversed(diff[-5:])]
     return up, down
 
 
@@ -227,7 +229,7 @@ def _count_breadth(pz=100):
         upflat = (pn_flat - 2) * pz + sum(
             1 for v in prev if isinstance(v, (int, float)) and v >= 0)
     upflat += sum(1 for v in _page_f3(pn_flat, pz) if isinstance(v, (int, float)) and v >= 0)
-    return up, upflat
+    return up, upflat, total_all
 
 
 def fetch_market_stats():
@@ -274,9 +276,10 @@ def fetch_market_stats():
     # 3) 涨跌家数：利用 f3 降序 + 二分查找页边界，精确统计（约12次请求）
     if stats["up"] is None:
         try:
-            up, flat_total = _count_breadth()
+            up, upflat, total_all = _count_breadth()
             stats["up"] = up
-            stats["flat"] = flat_total - up
+            stats["flat"] = max(upflat - up, 0)
+            stats["down"] = max(total_all - upflat, 0)
             stats["src"].append("bisect")
         except Exception as e:
             print("      [stat] 二分统计失败:", type(e).__name__, str(e)[:60])
