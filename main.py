@@ -35,12 +35,17 @@ def main():
     d = fetchers.gather()
 
     print("[2/4] AI 决策仪表盘分析 ...")
-    dash = llm.analyze(d.get("candidates") or [], d.get("news") or {})
+    import os
+    has_key = bool(os.environ.get("DEEPSEEK_API_KEY", "").strip())
+    cands = d.get("candidates") or []
+    print(f"      候选股票 {len(cands)} 只, API Key {'已配置' if has_key else '未配置'}")
+    dash = llm.analyze(cands, d.get("news") or {})
     if dash:
         d["dashboard"] = dash
         print(f"      分析完成: {len(dash)} 只")
     else:
-        print("      跳过（无 DEEPSEEK_API_KEY 或分析失败）")
+        print("      跳过（无候选股 / 无 Key / 分析失败）")
+    print(f"      数据源状态: {d.get('sources')}")
 
     print("[3/4] 生成日报 ...")
     md = report.build_markdown(d)

@@ -163,32 +163,66 @@ def fetch_market_stats():
             "total": len(diff)}
 
 
+def fetch_top_gainers(n=8):
+    """当日涨幅榜（排除ST、退市、低价股），作为动态选股池。"""
+    url = ("https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=60&po=1"
+           "&np=1&fltt=2&fid=f3"
+           "&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
+           "&fields=f2,f3,f12,f14")
+    diff = _get(url).json()["data"]["diff"]
+    out = []
+    for x in diff:
+        name = x.get("f14") or ""
+        price = x.get("f2")
+        if "ST" in name or "退" in name or not isinstance(price, (int, float)):
+            continue
+        if price < 2:
+            continue
+        out.append({"code": x["f12"], "name": name,
+                    "price": price, "pct": x["f3"]})
+        if len(out) >= n:
+            break
+    return out
+
+
 def fetch_candidates(news_list, max_n=6):
-    """动态选股候选：从今日快讯中提取被提及的个股代码，取前 N 只。
-    东财快讯 stockList 格式如 "1.600941"(沪) / "0.002124"(深)。"""
-    codes, seen = [], set()
+    """动态选股候选：新闻提及个股 + 当日涨幅榜龙头，去重后取前 N 只。"""
+    picked, seen = [], set()
+
+    def add(code, name, price, pct):
+        if code in seen or len(picked) >= max_n:
+            return
+        seen.add(code)
+        picked.append({"code": code, "name": name,
+                       "price": price, "pct": pct})
+
+    # 1) 新闻中被提及的个股（东财 stockList 格式如 "1.600941"）
+    news_codes = []
     for n in news_list:
         for c in n.get("stocks") or []:
-            code = c.split(".")[-1]
-            market = c.split(".")[0] if "." in c else ""
-            if market in ("0", "1") and len(code) == 6 and code not in seen:
-                seen.add(code)
-                codes.append(code)
-    codes = codes[:max_n]
-    if not codes:
-        return []
-    # 腾讯行情批量取名称/价格/涨跌幅
-    q = ",".join(("s_sh" if c.startswith(("6", "9")) else "s_sz") + c
-                 for c in codes)
-    text = _get("https://qt.gtimg.cn/q=" + q,
-                headers={**HEADERS, "Referer": "https://gu.qq.com/"}).text
-    out = []
-    for m in re.finditer(r'v_s_(\w+)="([^"]+)"', text):
-        f = m.group(2).split("~")
-        if len(f) > 6:
-            out.append({"code": f[2], "name": f[1], "price": float(f[3]),
-                        "pct": float(f[5])})
-    return out
+            parts = c.split(".")
+            if len(parts) == 2 and parts[0] in ("0", "1") and len(parts[1]) == 6:
+                news_codes.append(parts[1])
+    if news_codes:
+        q = ",".join(("s_sh" if c.startswith(("6", "9")) else "s_sz") + c
+                     for c in news_codes[:12])
+        try:
+            text = _get("https://qt.gtimg.cn/q=" + q,
+                        headers={**HEADERS, "Referer": "https://gu.qq.com/"}).text
+            for m in re.finditer(r'v_s_(\w+)="([^"]+)"', text):
+                f = m.group(2).split("~")
+                if len(f) > 6:
+                    add(f[2], f[1], float(f[3]), float(f[5]))
+        except Exception:
+            pass
+
+    # 2) 涨幅榜龙头补足
+    try:
+        for g in fetch_top_gainers(10):
+            add(g["code"], g["name"], g["price"], g["pct"])
+    except Exception:
+        pass
+    return picked
 
 
 def fetch_crypto(ids="bitcoin,ethereum"):
