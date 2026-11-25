@@ -4,16 +4,18 @@ on:
   schedule:
     # GitHub Actions 用 UTC 时间，避开整点排队高峰
     - cron: "19 0 * * *"   # 北京 08:19 盘前预判
+    - cron: "24 4 * * *"   # 北京 12:24 午盘快照
     - cron: "19 7 * * *"   # 北京 15:19 盘后复盘
   workflow_dispatch:
     inputs:
       phase:
-        description: "运行阶段（盘前 premarket / 盘后 postclose）"
+        description: "运行阶段（盘前 premarket / 午盘 midday / 盘后 postclose）"
         required: false
         default: "postclose"
         type: choice
         options:
           - premarket
+          - midday
           - postclose
       force:
         description: "强制重推（忽略今日已推送标记）"
@@ -38,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      RUN_PHASE: ${{ github.event_name == 'schedule' && (github.event.schedule == '19 0 * * *' && 'premarket' || 'postclose') || (github.event.inputs.phase || 'postclose') }}
+      RUN_PHASE: ${{ github.event_name == 'schedule' && (github.event.schedule == '19 0 * * *' && 'premarket' || github.event.schedule == '24 4 * * *' && 'midday' || 'postclose') || (github.event.inputs.phase || 'postclose') }}
       RUN_FORCE: ${{ github.event.inputs.force == 'true' && '1' || '' }}
     outputs:
       pushed: ${{ steps.pushed.outputs.pushed }}

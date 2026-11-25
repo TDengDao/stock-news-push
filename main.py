@@ -36,7 +36,7 @@ def main():
     cfg = load_config(args.config)
 
     phase = (os.environ.get("RUN_PHASE") or "postclose").strip().lower()
-    if phase not in ("premarket", "postclose"):
+    if phase not in ("premarket", "midday", "postclose"):
         phase = "postclose"
     force = (os.environ.get("RUN_FORCE") or "").strip() in ("1", "true")
     # Actions 机器是 UTC；运行时段内 UTC 日期与北京日期一致，与 fetchers.gather 取到的日期相同
@@ -52,7 +52,8 @@ def main():
     print("[1/4] 抓取数据 ...")
     d = fetchers.gather()
     d["phase"] = phase
-    d["phase_label"] = "盘前预判" if phase == "premarket" else "盘后复盘"
+    d["phase_label"] = {"premarket": "盘前预判", "midday": "午盘快照",
+                        "postclose": "盘后复盘"}[phase]
 
     print("[2/4] AI 决策仪表盘分析 ...")
     has_key = bool(os.environ.get("DEEPSEEK_API_KEY", "").strip())
@@ -85,11 +86,13 @@ def main():
                               "verdict": a.get("verdict", "观望")})
             ledger.add_picks(d["date"], "premarket", picks)
             print(f"      台账已记录 {len(picks)} 只盘前推荐")
-        else:
+        elif phase == "postclose":
             codes = ledger.review_codes(d["date"])
             prices = fetchers.fetch_quotes(codes) if codes else {}
             d["review"] = ledger.review(d["date"], prices)
             print(f"      复盘 {len(d['review'])} 个时间窗口")
+        else:
+            print("      午盘快照：不写台账、不复盘")
 
     print(f"      数据源状态: {d.get('sources')}")
 
