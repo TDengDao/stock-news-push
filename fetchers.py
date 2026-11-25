@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """数据抓取模块：全部使用免费公开接口，无需 API Key。"""
 import re
+import json
+import pathlib
 import datetime
 import time
 
@@ -14,6 +16,9 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Referer": "https://quote.eastmoney.com/",
 }
+
+DATA_DIR = pathlib.Path(__file__).parent / "data"
+SECTOR_CACHE = DATA_DIR / "last_sectors.json"
 
 # 关键词分类（用于快讯归类）
 KEYWORDS = {
@@ -88,15 +93,51 @@ def fetch_index_snapshot():
 
 
 def fetch_sector_rank(top=10):
-    """东财行业/概念板块涨幅榜与跌幅榜。
-    注意 clist 单页上限 100 条，涨/跌分别用不同排序请求。"""
+    """东财行业/概念板块涨幅榜与跌幅榜；成功后写入本地缓存。"""
     base = ("/api/qt/clist/get?pn=1&pz=100&np=1&fltt=2&fid=f3"
             "&fs=m:90+t:2&fields=f3,f14&po=")
-    up_diff = _em_get(base + "1").json()["data"]["diff"]
-    down_diff = _em_get(base + "0").json()["data"]["diff"]
+    up_diff = _em_get(base + "1", tries=3).json()["data"]["diff"]
+    down_diff = _em_get(base + "0", tries=3).json()["data"]["diff"]
     up = [{"name": x["f14"], "pct": x["f3"]} for x in up_diff[:top]]
     down = [{"name": x["f14"], "pct": x["f3"]} for x in down_diff[:5]]
+    try:
+        DATA_DIR.mkdir(exist_ok=True)
+        SECTOR_CACHE.write_text(
+            json.dumps({"up": up, "down": down}, ensure_ascii=False),
+            encoding="utf-8")
+    except Exception:
+        pass
     return up, down
+
+
+def load_cached_sectors():
+    """板块接口失败时读取上一次成功缓存，避免报告里板块热点空白。"""
+    try:
+        d = json.loads(SECTOR_CACHE.read_text(encoding="utf-8"))
+        return d.get("up") or [], d.get("down") or []
+    except Exception:
+        return [], []
+
+
+def fetch_fundamentals(codes):
+    """批量获取 PE(动)/PB/ROE，失败时该项为 None。"""
+    out = {}
+    for code in codes or []:
+        secid = ("1." if code.startswith(("6", "9")) else "0.") + code
+        try:
+            data = _em_get("/api/qt/stock/get?secid={}&fields=f57,f58,f162,f167,f173&fltt=2"
+                           .format(secid)).json().get("data") or {}
+            def num(v):
+                try:
+                    return round(float(v), 2)
+                except Exception:
+                    return None
+            out[code] = {"pe": num(data.get("f162")),
+                         "pb": num(data.get("f167")),
+                         "roe": num(data.get("f173"))}
+        except Exception:
+            out[code] = {"pe": None, "pb": None, "roe": None}
+    return out
 
 
 def fetch_em_news(size=40):
@@ -353,6 +394,22 @@ def fetch_candidates(news_list, max_n=6):
     return picked
 
 
+def fetch_quotes(codes):
+    """获取指定股票的最新价（用于历史推荐复盘）。"""
+    out = {}
+    for code in codes or []:
+        secid = ("1." if code.startswith(("6", "9")) else "0.") + code
+        try:
+            data = _em_get("/api/qt/stock/get?secid={}&fields=f57,f58,f2,f3&fltt=2"
+                           .format(secid)).json().get("data") or {}
+            price = data.get("f2")
+            if isinstance(price, (int, float)):
+                out[code] = float(price)
+        except Exception:
+            pass
+    return out
+
+
 def fetch_crypto(ids="bitcoin,ethereum"):
     """CoinGecko 币价（免 Key，频率限制内可用）。"""
     try:
@@ -391,6 +448,11 @@ def gather():
     ranks = step("板块榜单", fetch_sector_rank)
     if ranks:
         d["sector_up"], d["sector_down"] = ranks
+    else:
+        cached_up, cached_down = load_cached_sectors()
+        if cached_up or cached_down:
+            d["sector_up"], d["sector_down"] = cached_up, cached_down
+            d["sources"]["板块榜单"] = "CACHED"
     news = step("财经快讯", lambda: dedup(
         fetch_em_news(40) + fetch_sina_news(30)))
     if news:
@@ -406,9 +468,13 @@ def gather():
     cands = step("选股候选", fetch_candidates, all_news)
     if cands:
         d["candidates"] = cands
+        fund = step("基本面", fetch_fundamentals, [c["code"] for c in cands])
+        if fund:
+            for c in cands:
+                c.update(fund.get(c["code"], {}))
 
     # 全部成功则标记 sources 为 ok
-    for k in ["行情指数", "板块榜单", "财经快讯", "币价", "市场统计", "选股候选"]:
+    for k in ["行情指数", "板块榜单", "财经快讯", "币价", "市场统计", "选股候选", "基本面"]:
         d["sources"].setdefault(k, "ok")
     return d
 

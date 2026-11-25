@@ -21,6 +21,15 @@ def _fmt_dashboard_item(a):
              f"{a.get('verdict')} · 评分 {a.get('score')}",
              f"- 📌 {a.get('summary', '')}",
              f"- ℹ️ {a.get('key_info', '')}"]
+    vals = []
+    if a.get("pe") is not None:
+        vals.append(f"PE {a['pe']}")
+    if a.get("pb") is not None:
+        vals.append(f"PB {a['pb']}")
+    if a.get("roe") is not None:
+        vals.append(f"ROE {a['roe']}%")
+    if vals:
+        lines.append("- 💹 " + " · ".join(vals))
     risks = a.get("risks") or []
     poss = a.get("positives") or []
     if risks:
@@ -33,7 +42,7 @@ def _fmt_dashboard_item(a):
 
 
 def build_markdown(d):
-    lines = [f"# 财经早报 · {d['date']}", ""]
+    lines = [f"# 财经早报 · {d['date']} · {d.get('phase_label', '全天')}", ""]
 
     dash = [a for a in (d.get("dashboard") or []) if isinstance(a, dict)]
     if dash:
@@ -46,6 +55,17 @@ def build_markdown(d):
         lines.append("")
         for a in dash:
             lines.append(_fmt_dashboard_item(a))
+        lines.append("")
+
+    review = d.get("review") or []
+    if review:
+        lines.append("## 📈 历史推荐复盘")
+        for r in review:
+            if not r.get("count"):
+                continue
+            lines.append(f"- **{r['days']} 日前（{r['date']}）** 推荐 {r['count']} 只 · "
+                         f"平均 {r['avg']:+.2f}% · 上涨占比 {r['win']}% · "
+                         f"最好 {r['best']:+.2f}% / 最差 {r['worst']:+.2f}%")
         lines.append("")
 
     lines.append("## 大盘指数")
@@ -148,6 +168,15 @@ def build_html(d, md_text):
 </div>"""
         dash_html = f"<h2>🎯 决策仪表盘（AI 动态选股，共{len(dash)}只）</h2>{cards}"
 
+    review_html = ""
+    review = d.get("review") or []
+    review_items = [
+        f"<li>{r['days']} 日前（{r['date']}）推荐 {r['count']} 只 · "
+        f"平均 {r['avg']:+.2f}% · 上涨占比 {r['win']}%</li>"
+        for r in review if r.get("count")]
+    if review_items:
+        review_html = "<h2>📈 历史推荐复盘</h2><ul>" + "".join(review_items) + "</ul>"
+
     stats_html = ""
     stats = d.get("market_stats") or {}
     if stats:
@@ -196,8 +225,9 @@ ul{{margin:4px 0 4px 20px;padding:0}}
 .foot{{color:#999;font-size:12px;margin-top:32px;border-top:1px solid #eee;
 padding-top:12px}}
 </style></head><body>
-<h1>财经早报 · {d['date']}</h1>
+<h1>财经早报 · {d['date']} · {_esc(d.get('phase_label', '全天'))}</h1>
 {dash_html}
+{review_html}
 <h2>大盘指数</h2>
 <table><tr><th>指数</th><th>点位</th><th>涨跌幅</th></tr>{rows}</table>
 {stats_html}
@@ -216,7 +246,7 @@ def build_telegram_text(d):
     idx = " | ".join(
         f"{x['name']} {x['pct']:+.2f}%" for x in d["index"])
     up = "、".join(f"{x['name']}+{x['pct']}%" for x in d["sector_up"][:6])
-    lines = [f"📰 财经早报 {d['date']}", "", f"📊 大盘：{idx}",
+    lines = [f"📰 财经早报 {d['date']} · {d.get('phase_label', '全天')}", "", f"📊 大盘：{idx}",
              f"🔥 领涨：{up}"]
     stats = d.get("market_stats") or {}
     if stats:
@@ -237,6 +267,11 @@ def build_telegram_text(d):
             lines.append(f"{icon} {a.get('name')}({a.get('code')}) "
                          f"{a.get('verdict')} {a.get('score')}分 — "
                          f"{a.get('summary', '')}")
+    review = d.get("review") or []
+    for r in review:
+        if r.get("count"):
+            lines.append(f"📈 {r['days']}日前推荐复盘：平均 {r['avg']:+.2f}% · "
+                         f"上涨占比 {r['win']}%")
     if d["crypto"]:
         crypto = " | ".join(
             f"{x['name']} {x['price']:,}({x['pct']:+.2f}%)" for x in d["crypto"])
@@ -249,4 +284,6 @@ def build_telegram_text(d):
             for n in items[:8]:
                 text = n["title"] or n["summary"][:50]
                 lines.append(f"• {text}")
+    lines.append("")
+    lines.append("⚠️ 本内容由公开数据与 AI 自动生成，仅供参考，不构成投资建议。")
     return "\n".join(lines)

@@ -2,8 +2,8 @@ name: 定时探针（验证 scheduler 是否工作）
 
 on:
   schedule:
-    # 每 5 分钟运行一次，仅用于验证 GitHub 定时任务是否被调度
-    - cron: "*/5 * * * *"
+    # 每 6 分钟运行一次，仅用于验证 GitHub 定时任务是否被调度
+    - cron: "*/6 * * * *"
   workflow_dispatch:
 
 permissions:

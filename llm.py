@@ -18,8 +18,9 @@ SYSTEM_PROMPT = """你是一名严谨的A股投资分析师。根据提供的股
  "risks":["风险1","风险2",...最多3条],
  "positives":["利好1","利好2",...最多3条],
  "latest":"最新动态(40字内)"}
-评分参考：>=70 偏多，40-69 观望/震荡，<40 偏空。判断必须基于给出的真实信息，\
-不要编造数据；信息不足时 verdict 给"观望"并在 summary 说明。"""
+评分参考：>=70 偏多，40-69 观望/震荡，<40 偏空。输入字段含 pe(动态市盈率)、\
+pb(市净率)、roe(净资产收益率)，请结合估值与基本面，不要只看涨幅追高。\
+判断必须基于给出的真实信息，不要编造数据；信息不足时 verdict 给"观望"并在 summary 说明。"""
 
 
 def _client():
@@ -98,7 +99,9 @@ def analyze(candidates, buckets, timeout=90):
         return []
     candidates = _related_news(candidates, buckets)
     payload = [{"code": c["code"], "name": c["name"],
-                "price": c["price"], "pct": c["pct"], "news": c["news"]}
+                "price": c["price"], "pct": c["pct"],
+                "pe": c.get("pe"), "pb": c.get("pb"), "roe": c.get("roe"),
+                "news": c["news"]}
                for c in candidates]
     body = {
         "model": MODEL,

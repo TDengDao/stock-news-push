@@ -2,10 +2,19 @@ name: 财经早报
 
 on:
   schedule:
-    # GitHub Actions 用 UTC 时间：0:17 UTC = 北京时间 8:17
-    # 避开整点高峰，整点常出现 15~45 分钟排队延迟
-    - cron: "17 0 * * *"
-  workflow_dispatch:        # 支持手动触发测试
+    # GitHub Actions 用 UTC 时间，避开整点排队高峰
+    - cron: "19 0 * * *"   # 北京 08:19 盘前预判
+    - cron: "19 7 * * *"   # 北京 15:19 盘后复盘
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "运行阶段（盘前 premarket / 盘后 postclose）"
+        required: false
+        default: "postclose"
+        type: choice
+        options:
+          - premarket
+          - postclose
 
 permissions:
   contents: write           # 需要写 gh-pages 分支
@@ -45,6 +54,7 @@ jobs:
       - name: 抓取数据 · AI 分析 · 推送日报
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          RUN_PHASE: ${{ github.event_name == 'schedule' && (github.event.schedule == '19 0 * * *' && 'premarket' || 'postclose') || (github.event.inputs.phase || 'postclose') }}
         run: python main.py
 
       - name: 失败告警（Server酱）
@@ -68,6 +78,18 @@ jobs:
           name: report-${{ github.run_number }}
           path: output/
           retention-days: 90
+
+      - name: 提交推荐台账
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name "stock-news-bot"
+          git config user.email "bot@example.com"
+          git add -A data 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "ledger: run ${{ github.run_number }}"
+            git push
+          fi
 
   publish-site:
     needs: daily-report
