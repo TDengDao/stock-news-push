@@ -126,6 +126,8 @@ def main():
          "pushed_at": datetime.datetime.utcnow().isoformat() + "Z"},
         ensure_ascii=False), encoding="utf-8")
     print(f"      已写入推送标记: data/pushed/{marker.name}")
+    # 本运行确实推送过的标志（不提交），工作流据此决定是否发布网站
+    (BASE / ".pushed_this_run").write_text("1", encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -37,6 +37,11 @@ jobs:
   daily-report:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      RUN_PHASE: ${{ github.event_name == 'schedule' && (github.event.schedule == '19 0 * * *' && 'premarket' || 'postclose') || (github.event.inputs.phase || 'postclose') }}
+      RUN_FORCE: ${{ github.event.inputs.force == 'true' && '1' || '' }}
+    outputs:
+      pushed: ${{ steps.pushed.outputs.pushed }}
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -62,9 +67,18 @@ jobs:
       - name: 抓取数据 · AI 分析 · 推送日报
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          RUN_PHASE: ${{ github.event_name == 'schedule' && (github.event.schedule == '19 0 * * *' && 'premarket' || 'postclose') || (github.event.inputs.phase || 'postclose') }}
-          RUN_FORCE: ${{ github.event.inputs.force == 'true' && '1' || '' }}
         run: python main.py
+
+      - name: 判断本次是否实际推送
+        id: pushed
+        if: always()
+        run: |
+          if [ -f .pushed_this_run ]; then
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "本次未推送（跳过或失败），后续发布步骤将不执行"
+          fi
 
       - name: 失败告警（Server酱）
         if: failure()
@@ -81,7 +95,7 @@ jobs:
             || echo "告警推送失败（不影响主流程）"
 
       - name: 上传日报存档
-        if: always()
+        if: always() && steps.pushed.outputs.pushed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: report-${{ github.run_number }}
@@ -102,7 +116,7 @@ jobs:
 
   publish-site:
     needs: daily-report
-    if: always() && needs.daily-report.result == 'success'
+    if: always() && needs.daily-report.result == 'success' && needs.daily-report.outputs.pushed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
