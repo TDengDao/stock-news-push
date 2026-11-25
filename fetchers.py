@@ -120,23 +120,47 @@ def load_cached_sectors():
 
 
 def fetch_fundamentals(codes):
-    """批量获取 PE(动)/PB/ROE，失败时该项为 None。"""
+    """获取 PE(动)/PB/ROE；东财失败时回退腾讯行情的 PE/PB。"""
+    def num(v):
+        try:
+            return round(float(v), 2)
+        except Exception:
+            return None
+
     out = {}
     for code in codes or []:
+        info = {"pe": None, "pb": None, "roe": None}
         secid = ("1." if code.startswith(("6", "9")) else "0.") + code
-        try:
-            data = _em_get("/api/qt/stock/get?secid={}&fields=f57,f58,f162,f167,f173&fltt=2"
-                           .format(secid)).json().get("data") or {}
-            def num(v):
-                try:
-                    return round(float(v), 2)
-                except Exception:
-                    return None
-            out[code] = {"pe": num(data.get("f162")),
-                         "pb": num(data.get("f167")),
-                         "roe": num(data.get("f173"))}
-        except Exception:
-            out[code] = {"pe": None, "pb": None, "roe": None}
+        path = ("/api/qt/stock/get?secid={}"
+                "&fields=f57,f58,f162,f167,f173&fltt=2".format(secid))
+        for host in EM_HOSTS:
+            try:
+                data = _get("https://" + host + path, tries=1).json().get("data") or {}
+                if data.get("f162") is not None:
+                    info["pe"] = num(data.get("f162"))
+                    info["pb"] = num(data.get("f167"))
+                    info["roe"] = num(data.get("f173"))
+                    break
+            except Exception:
+                continue
+        if info["pe"] is None or info["pb"] is None:
+            try:
+                market = "sh" if code.startswith(("6", "9")) else "sz"
+                full = market + code
+                q = _get("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+                         "?param={},day,,,1,qfq".format(full)).json()
+                arr = q["data"][full]["qt"][full]
+                if info["pe"] is None and len(arr) > 52:
+                    info["pe"] = num(arr[52])
+                if info["pb"] is None and len(arr) > 46:
+                    info["pb"] = num(arr[46])
+            except Exception:
+                pass
+        if info["roe"] is None and info["pe"] and info["pb"] and info["pe"] > 0:
+            info["roe"] = round(info["pb"] / info["pe"] * 100, 2)
+        out[code] = info
+    got = sum(1 for v in out.values() if v["pe"] is not None or v["pb"] is not None)
+    print("      [fund] 成功获取 {}/{} 只估值数据".format(got, len(out)))
     return out
 
 
