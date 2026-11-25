@@ -15,6 +15,14 @@ on:
         options:
           - premarket
           - postclose
+      force:
+        description: "强制重推（忽略今日已推送标记）"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: write           # 需要写 gh-pages 分支
@@ -55,6 +63,7 @@ jobs:
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           RUN_PHASE: ${{ github.event_name == 'schedule' && (github.event.schedule == '19 0 * * *' && 'premarket' || 'postclose') || (github.event.inputs.phase || 'postclose') }}
+          RUN_FORCE: ${{ github.event.inputs.force == 'true' && '1' || '' }}
         run: python main.py
 
       - name: 失败告警（Server酱）

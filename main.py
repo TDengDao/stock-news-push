@@ -5,6 +5,8 @@
 环境变量: DEEPSEEK_API_KEY（可选，启用 AI 决策仪表盘）
 """
 import argparse
+import datetime
+import json
 import os
 import pathlib
 import sys
@@ -33,11 +35,22 @@ def main():
 
     cfg = load_config(args.config)
 
-    print("[1/4] 抓取数据 ...")
-    d = fetchers.gather()
     phase = (os.environ.get("RUN_PHASE") or "postclose").strip().lower()
     if phase not in ("premarket", "postclose"):
         phase = "postclose"
+    force = (os.environ.get("RUN_FORCE") or "").strip() in ("1", "true")
+    # Actions 机器是 UTC；运行时段内 UTC 日期与北京日期一致，与 fetchers.gather 取到的日期相同
+    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    marker = BASE / "data" / "pushed" / f"{today}-{phase}.json"
+
+    # 防重复：多个定时层（GitHub cron / 外部调度）可能同时触发，
+    # 今天该阶段已成功推送过就直接退出。RUN_FORCE=1 可强制重推。
+    if not args.dry_run and not force and marker.exists():
+        print(f"[SKIP] 今日 {phase} 已推送过（存在 {marker.name}），退出")
+        return
+
+    print("[1/4] 抓取数据 ...")
+    d = fetchers.gather()
     d["phase"] = phase
     d["phase_label"] = "盘前预判" if phase == "premarket" else "盘后复盘"
 
@@ -105,6 +118,14 @@ def main():
         print(f"      [{mark}] {name}: {msg}")
     if results and not any(ok for _, ok, _ in results):
         sys.exit(1)
+
+    # 推送成功后写标记，工作流会把它提交回仓库，供下一次运行判重
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps(
+        {"date": today, "phase": phase,
+         "pushed_at": datetime.datetime.utcnow().isoformat() + "Z"},
+        ensure_ascii=False), encoding="utf-8")
+    print(f"      已写入推送标记: data/pushed/{marker.name}")
 
 
 if __name__ == "__main__":
