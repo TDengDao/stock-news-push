@@ -46,5 +46,53 @@
         "verdict": "观望"
       }
     ]
+  },
+  {
+    "date": "2026-11-26",
+    "phase": "premarket",
+    "picks": [
+      {
+        "code": "301363",
+        "name": "美好医疗",
+        "price": 13.8,
+        "score": 48,
+        "verdict": "观望"
+      },
+      {
+        "code": "688626",
+        "name": "翔宇医疗",
+        "price": 33.6,
+        "score": 30,
+        "verdict": "卖出"
+      },
+      {
+        "code": "688757",
+        "name": "胜科纳米",
+        "price": 27.26,
+        "score": 28,
+        "verdict": "卖出"
+      },
+      {
+        "code": "600036",
+        "name": "招商银行",
+        "price": 43.2,
+        "score": 72,
+        "verdict": "买入"
+      },
+      {
+        "code": "601998",
+        "name": "中信银行",
+        "price": 9.54,
+        "score": 65,
+        "verdict": "观望"
+      },
+      {
+        "code": "301629",
+        "name": "矽电股份",
+        "price": 150.51,
+        "score": 25,
+        "verdict": "卖出"
+      }
+    ]
   }
 ]
