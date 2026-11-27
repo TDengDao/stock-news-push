@@ -94,5 +94,53 @@
         "verdict": "卖出"
       }
     ]
+  },
+  {
+    "date": "2026-11-27",
+    "phase": "premarket",
+    "picks": [
+      {
+        "code": "300919",
+        "name": "中伟新材",
+        "price": 28.17,
+        "score": 68,
+        "verdict": "观望"
+      },
+      {
+        "code": "301630",
+        "name": "同宇新材",
+        "price": 127.73,
+        "score": 55,
+        "verdict": "观望"
+      },
+      {
+        "code": "601026",
+        "name": "道生天合",
+        "price": 9.77,
+        "score": 50,
+        "verdict": "观望"
+      },
+      {
+        "code": "301115",
+        "name": "联检科技",
+        "price": 20.96,
+        "score": 35,
+        "verdict": "观望"
+      },
+      {
+        "code": "300700",
+        "name": "岱勒新材",
+        "price": 13.05,
+        "score": 38,
+        "verdict": "观望"
+      },
+      {
+        "code": "000063",
+        "name": "中兴通讯",
+        "price": 25.66,
+        "score": 62,
+        "verdict": "观望"
+      }
+    ]
   }
 ]
