@@ -142,5 +142,53 @@
         "verdict": "观望"
       }
     ]
+  },
+  {
+    "date": "2026-11-28",
+    "phase": "premarket",
+    "picks": [
+      {
+        "code": "000426",
+        "name": "兴业银锡",
+        "price": 20.47,
+        "score": 72,
+        "verdict": "买入"
+      },
+      {
+        "code": "000603",
+        "name": "盛达资源",
+        "price": 26.25,
+        "score": 62,
+        "verdict": "观望"
+      },
+      {
+        "code": "601398",
+        "name": "工商银行",
+        "price": 9.1,
+        "score": 55,
+        "verdict": "观望"
+      },
+      {
+        "code": "601939",
+        "name": "建设银行",
+        "price": 12.41,
+        "score": 52,
+        "verdict": "观望"
+      },
+      {
+        "code": "300308",
+        "name": "中际旭创",
+        "price": 516.15,
+        "score": 68,
+        "verdict": "观望"
+      },
+      {
+        "code": "300502",
+        "name": "新易盛",
+        "price": 226.84,
+        "score": 65,
+        "verdict": "观望"
+      }
+    ]
   }
 ]
